@@ -518,12 +518,12 @@ func (rf *Raft) sendAppendEntriesAndCommitLogs(term int32) {
 				reply := AppendEntryMsgReply{}
 				rf.sendAppendEntry(server, &appendEntryMsg, &reply)
 				for !reply.Success && reply.Retry {
-					logEntry := log[appendEntryMsg.PrevLogIndex]
-					appendEntryMsg.Entries = append([]LogEntry{logEntry}, appendEntryMsg.Entries...)
+					appendEntryMsg.Entries = log[appendEntryMsg.PrevLogIndex:]
 					appendEntryMsg.PrevLogIndex--
 					appendEntryMsg.PrevLogTerm = rf.getTermAtIndexLock(appendEntryMsg.PrevLogIndex)
 					reply.Retry = false
 					rf.sendAppendEntry(server, &appendEntryMsg, &reply)
+					appendEntryMsg.PrevLogIndex/=2
 				}
 
 				if !reply.Success {
@@ -579,7 +579,7 @@ func (rf *Raft) waitForMajorityToAgreeOrAllToFinish(majorityOrFinished *sync.Con
 func (rf *Raft) commitLogs() {
 	nextCommitIndex := rf.getNextCommitIndexForLeader()
 	if nextCommitIndex > rf.commitIndex {
-		rf.applyCommittedMessages(nextCommitIndex)
+		rf.applyCommittedMessagesWithSliceToLog(nextCommitIndex)
 		rf.setCommitIndexLock(nextCommitIndex)
 	}
 }
@@ -588,7 +588,7 @@ func (rf *Raft) getNextCommitIndexForLeader() int32 {
 	majority := rf.majority()
 	nextCommitIndex := rf.getLastLogIndexLock()
 	currentTerm := rf.getCurrentTermLock()
-	for ; nextCommitIndex > atomic.LoadInt32(&rf.commitIndex) && rf.getLogAtIndex(nextCommitIndex).Term == currentTerm;
+	for ; nextCommitIndex > atomic.LoadInt32(&rf.commitIndex) && rf.getLogAtIndexAtomic(nextCommitIndex).Term == currentTerm;
 	nextCommitIndex-- {
 		followersCommitted := 0
 		for follower := range rf.matchIndex {
@@ -613,6 +613,18 @@ func (rf *Raft) getMatchIndexForFollowerLock(server int) int32 {
 
 func (rf *Raft) applyCommittedMessages(nextCommitIndex int32) {
 	for i, logEntry := range rf.log[rf.commitIndex+1 : nextCommitIndex+1] {
+		applyMsg := ApplyMsg{
+			CommandValid: true,
+			Command:      logEntry.Command,
+			CommandIndex: int(rf.commitIndex) + i + 1,
+		}
+		rf.applyCh <- applyMsg
+	}
+}
+
+func (rf *Raft) applyCommittedMessagesWithSliceToLog(nextCommitIndex int32) {
+	log := rf.getSliceToLogLock()
+	for i, logEntry := range log[rf.commitIndex+1 : nextCommitIndex+1] {
 		applyMsg := ApplyMsg{
 			CommandValid: true,
 			Command:      logEntry.Command,
@@ -674,6 +686,8 @@ func (rf *Raft) appendNewLogs(leaderPrevLogIndex int32, entries []LogEntry) {
 
 	indexToCutFrom := newLogIndex + int32(i)
 	rf.log = append(rf.log[:indexToCutFrom], entries[i:]...)
+	//fmt.Printf("server %d logs %d \n", rf.me, entries[i:])
+	//fmt.Printf("server %d logs %v \n", rf.me, rf.log)
 	rf.persist()
 }
 
@@ -708,6 +722,12 @@ func (rf *Raft) getLastLogIndexLock() int32 {
 
 func (rf *Raft) getLogAtIndex(index int32) LogEntry {
 	return rf.log[index]
+}
+
+func (rf *Raft) getLogAtIndexAtomic(index int32) LogEntry {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.getLogAtIndex(index)
 }
 
 func (rf *Raft) majority() int {

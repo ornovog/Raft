@@ -715,7 +715,7 @@ func TestPersist12C(t *testing.T) {
 	cfg.start1(leader2, cfg.applier)
 	cfg.connect(leader2)
 
-	cfg.wait(4, servers, -1) // wait for leader2 to join before killing i3
+	cfg.wait(3, servers, -1) // wait for leader2 to join before killing i3
 
 	i3 := (cfg.checkOneLeader() + 1) % servers
 	cfg.disconnect(i3)
@@ -925,7 +925,7 @@ func TestFigure8Unreliable2C(t *testing.T) {
 			ms := rand.Int63() % (int64(RaftElectionTimeout/time.Millisecond) / 2)
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 		} else {
-			ms := (rand.Int63() % 13)
+			ms := rand.Int63() % 13
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 		}
 
@@ -948,14 +948,12 @@ func TestFigure8Unreliable2C(t *testing.T) {
 			cfg.connect(i)
 		}
 	}
-
 	cfg.one(rand.Int()%10000, servers, true)
 
 	cfg.end()
 }
 
 func internalChurn(t *testing.T, unreliable bool) {
-
 	servers := 5
 	cfg := make_config(t, servers, unreliable, false)
 	defer cfg.cleanup()
@@ -973,7 +971,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 		var ret []int
 		ret = nil
 		defer func() { ch <- ret }()
-		values := []int{}
+		var values []int
 		for atomic.LoadInt32(&stop) == 0 {
 			x := rand.Int()
 			index := -1
@@ -1016,7 +1014,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 	}
 
 	ncli := 3
-	cha := []chan []int{}
+	var cha []chan []int
 	for i := 0; i < ncli; i++ {
 		cha = append(cha, make(chan []int))
 		go cfn(i, cha[i])
@@ -1061,7 +1059,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 
 	atomic.StoreInt32(&stop, 1)
 
-	values := []int{}
+	var values []int
 	for i := 0; i < ncli; i++ {
 		vv := <-cha[i]
 		if vv == nil {
@@ -1075,7 +1073,7 @@ func internalChurn(t *testing.T, unreliable bool) {
 	lastIndex := cfg.one(rand.Int(), servers, true)
 
 	really := make([]int, lastIndex+1)
-	for index := 1; index <= lastIndex; index++ {
+	for index := 0; index < lastIndex; index++ {
 		v := cfg.wait(index, servers, -1)
 		if vi, ok := v.(int); ok {
 			really = append(really, vi)
