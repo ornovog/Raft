@@ -1,4 +1,4 @@
-package Raft
+package raft
 
 //
 // Raft tests.
@@ -8,7 +8,9 @@ package Raft
 // test with the original before submitting.
 //
 
-import "testing"
+import (
+	"testing"
+)
 import "fmt"
 import "time"
 import "math/rand"
